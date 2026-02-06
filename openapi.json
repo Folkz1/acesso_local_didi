@@ -1,0 +1,460 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Jarbas Remote Executor Bridge",
+    "description": "API para controlar remotamente um computador Windows via Tailscale. Permite executar comandos no PowerShell, Codex, Claude CLI e outras ferramentas, além de operações completas no sistema de arquivos (ler, escrever, listar, deletar, editar). O bridge roda no PC local e é acessado pela VPS via rede privada Tailscale.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://TAILSCALE_IP:8788",
+      "description": "Bridge server no PC local (substituir TAILSCALE_IP pelo IP real)"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Token de autenticação configurado como BRIDGE_TOKEN no servidor"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean", "example": false },
+          "error": { "type": "string" }
+        }
+      },
+      "FileEntry": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "example": "package.json" },
+          "path": { "type": "string", "example": "D:\\jarbas_vida\\package.json" },
+          "type": { "type": "string", "enum": ["file", "directory"] },
+          "size": { "type": "integer", "example": 512 },
+          "modified": { "type": "string", "format": "date-time" },
+          "children": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/FileEntry" },
+            "description": "Subentradas (só aparece com recursive: true)"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check do bridge server",
+        "description": "Verifica se o bridge está rodando e retorna informações básicas. Não requer autenticação.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Bridge está rodando",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "service": { "type": "string", "example": "jarbas-remote-bridge" },
+                    "status": { "type": "string", "example": "running" },
+                    "uptime": { "type": "number", "example": 3600 },
+                    "allowedTools": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "example": ["codex", "claude", "powershell", "python", "node"]
+                    },
+                    "timeout": { "type": "integer", "example": 300000 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/run": {
+      "post": {
+        "summary": "Executar comando no PC remoto",
+        "description": "Executa um comando usando uma ferramenta autorizada no computador Windows. Use 'powershell' para comandos do sistema (Get-Process, Get-Service, Install-Module, etc.), 'codex' para Claude Code, 'claude' para Claude CLI, 'python' para scripts Python, 'node' para Node.js. O PowerShell roda com ExecutionPolicy Bypass para acesso admin completo.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tool", "command"],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "description": "Ferramenta a usar (deve estar na allowlist)",
+                    "enum": ["powershell", "codex", "claude", "python", "node"],
+                    "example": "powershell"
+                  },
+                  "command": {
+                    "type": "string",
+                    "description": "Comando a executar",
+                    "example": "Get-Process | Select-Object -First 5 Name, CPU, WorkingSet"
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Argumentos adicionais (para tools que não são powershell)",
+                    "example": []
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "description": "Timeout em ms (padrão: 300000 = 5min)",
+                    "example": 60000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Comando executado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "stdout": { "type": "string", "description": "Saída padrão do comando" },
+                    "stderr": { "type": "string", "description": "Saída de erro do comando" },
+                    "exitCode": { "type": "integer", "example": 0 },
+                    "executionTime": { "type": "integer", "description": "Tempo de execução em ms", "example": 1234 }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Campos obrigatórios faltando (tool, command)" },
+          "401": { "description": "Token de autenticação inválido ou ausente" },
+          "403": { "description": "Ferramenta não está na allowlist" },
+          "500": { "description": "Comando falhou na execução" }
+        }
+      }
+    },
+    "/files/read": {
+      "post": {
+        "summary": "Ler conteúdo de arquivo",
+        "description": "Lê o conteúdo de um arquivo no PC remoto. Útil para ver código-fonte, configurações, logs, etc. Limite de 5MB por arquivo - para arquivos maiores, use /run com PowerShell (Get-Content).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do arquivo",
+                    "example": "D:\\jarbas_vida\\package.json"
+                  },
+                  "encoding": {
+                    "type": "string",
+                    "description": "Encoding do arquivo (padrão: utf8)",
+                    "default": "utf8",
+                    "example": "utf8"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Arquivo lido com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "content": { "type": "string", "description": "Conteúdo do arquivo" },
+                    "size": { "type": "integer", "description": "Tamanho em bytes" },
+                    "path": { "type": "string", "description": "Caminho absoluto resolvido" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
+          "404": { "description": "Arquivo não encontrado" },
+          "413": { "description": "Arquivo maior que 5MB" }
+        }
+      }
+    },
+    "/files/write": {
+      "post": {
+        "summary": "Criar ou escrever arquivo",
+        "description": "Cria um novo arquivo ou sobrescreve um existente no PC remoto. Pode criar diretórios intermediários automaticamente com createDirs: true.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["path", "content"],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do arquivo",
+                    "example": "D:\\projetos\\novo-arquivo.txt"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Conteúdo a escrever no arquivo",
+                    "example": "Hello World!"
+                  },
+                  "createDirs": {
+                    "type": "boolean",
+                    "description": "Criar diretórios intermediários se não existirem",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Arquivo escrito com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "path": { "type": "string" },
+                    "size": { "type": "integer", "description": "Tamanho do conteúdo escrito" },
+                    "created": { "type": "boolean", "description": "true se arquivo foi criado, false se foi atualizado" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Campo content é obrigatório" },
+          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" }
+        }
+      }
+    },
+    "/files/list": {
+      "post": {
+        "summary": "Listar conteúdo de diretório",
+        "description": "Lista arquivos e pastas de um diretório no PC remoto. Com recursive: true, lista até 3 níveis de profundidade.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do diretório",
+                    "example": "D:\\jarbas_vida\\src"
+                  },
+                  "recursive": {
+                    "type": "boolean",
+                    "description": "Listar subdiretórios recursivamente (max 3 níveis)",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Diretório listado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "path": { "type": "string" },
+                    "entries": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/FileEntry" }
+                    },
+                    "count": { "type": "integer", "description": "Número de entradas no nível raiz" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
+          "404": { "description": "Diretório não encontrado" }
+        }
+      }
+    },
+    "/files/delete": {
+      "post": {
+        "summary": "Deletar arquivo ou diretório",
+        "description": "Remove um arquivo ou diretório do PC remoto. Para deletar diretórios, é obrigatório passar recursive: true como confirmação de segurança.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do arquivo/diretório",
+                    "example": "D:\\temp\\arquivo-temporario.txt"
+                  },
+                  "recursive": {
+                    "type": "boolean",
+                    "description": "Obrigatório para deletar diretórios",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Arquivo/diretório deletado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "path": { "type": "string" },
+                    "deleted": { "type": "boolean", "example": true }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Tentou deletar diretório sem recursive: true" },
+          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
+          "404": { "description": "Arquivo/diretório não encontrado" }
+        }
+      }
+    },
+    "/files/info": {
+      "post": {
+        "summary": "Obter informações de arquivo",
+        "description": "Retorna metadados de um arquivo ou diretório: se existe, tamanho, datas de criação/modificação/acesso, se é arquivo ou pasta. Útil para verificar se um caminho existe antes de outras operações.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do arquivo/diretório",
+                    "example": "D:\\jarbas_vida\\src\\index.js"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Informações obtidas (pode existir ou não)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "path": { "type": "string" },
+                    "exists": { "type": "boolean" },
+                    "isFile": { "type": "boolean" },
+                    "isDirectory": { "type": "boolean" },
+                    "size": { "type": "integer", "description": "Tamanho em bytes" },
+                    "created": { "type": "string", "format": "date-time" },
+                    "modified": { "type": "string", "format": "date-time" },
+                    "accessed": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" }
+        }
+      }
+    },
+    "/files/edit": {
+      "post": {
+        "summary": "Editar arquivo com search-and-replace",
+        "description": "Busca um texto no arquivo e substitui por outro. Pode substituir a primeira ocorrência ou todas (all: true). Útil para editar configurações, corrigir código, etc.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["path", "search", "replace"],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do arquivo",
+                    "example": "D:\\projetos\\app\\config.js"
+                  },
+                  "search": {
+                    "type": "string",
+                    "description": "Texto a buscar no arquivo",
+                    "example": "localhost:3000"
+                  },
+                  "replace": {
+                    "type": "string",
+                    "description": "Texto substituto",
+                    "example": "production.example.com"
+                  },
+                  "all": {
+                    "type": "boolean",
+                    "description": "Substituir todas as ocorrências (padrão: false = só a primeira)",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Arquivo editado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "path": { "type": "string" },
+                    "replacements": { "type": "integer", "description": "Número de substituições realizadas", "example": 1 }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Campos search e replace são obrigatórios" },
+          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
+          "404": { "description": "Arquivo não encontrado" }
+        }
+      }
+    }
+  }
+}

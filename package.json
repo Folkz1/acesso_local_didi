@@ -1,0 +1,32 @@
+{
+  "name": "@jarbas/remote-executor",
+  "version": "1.0.0",
+  "description": "Bridge server para executar comandos locais via Tailscale com acesso admin PowerShell",
+  "main": "bridge-server.js",
+  "scripts": {
+    "start": "node bridge-server.js",
+    "dev": "nodemon bridge-server.js",
+    "test": "node test-bridge.js"
+  },
+  "keywords": [
+    "jarbas",
+    "remote",
+    "executor",
+    "bridge",
+    "tailscale",
+    "powershell"
+  ],
+  "author": "Jarbas Vida",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
