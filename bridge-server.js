@@ -19,7 +19,9 @@ app.use(express.json({ limit: '10mb' }));
 const CONFIG = {
   PORT: process.env.BRIDGE_PORT || 8788,
   TOKEN: process.env.BRIDGE_TOKEN,
-  ALLOWED_TOOLS: (process.env.ALLOWED_TOOLS || 'codex,claude,powershell,python,node').split(',').map(t => t.trim()),
+  ALLOWED_TOOLS: (process.env.ALLOWED_TOOLS || '*').trim() === '*'
+    ? null  // null = sem restrição, aceita qualquer tool
+    : process.env.ALLOWED_TOOLS.split(',').map(t => t.trim()),
   COMMAND_TIMEOUT: parseInt(process.env.COMMAND_TIMEOUT || '300000', 10), // 5 minutos
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   LOG_DIR: path.join(__dirname, 'logs')
@@ -216,7 +218,7 @@ app.get('/health', (req, res) => {
     service: 'jarbas-remote-bridge',
     status: 'running',
     uptime: process.uptime(),
-    allowedTools: CONFIG.ALLOWED_TOOLS,
+    allowedTools: CONFIG.ALLOWED_TOOLS || 'ALL (unrestricted)',
     timeout: CONFIG.COMMAND_TIMEOUT
   });
 });
@@ -233,12 +235,12 @@ app.post('/run', authMiddleware, async (req, res) => {
     });
   }
   
-  // Verificar se a ferramenta é permitida
-  if (!CONFIG.ALLOWED_TOOLS.includes(tool)) {
+  // Verificar se a ferramenta é permitida (null = sem restrição)
+  if (CONFIG.ALLOWED_TOOLS && !CONFIG.ALLOWED_TOOLS.includes(tool)) {
     log('warn', 'Tool not allowed', { tool, allowedTools: CONFIG.ALLOWED_TOOLS });
-    return res.status(403).json({ 
-      ok: false, 
-      error: `Tool '${tool}' not allowed. Allowed tools: ${CONFIG.ALLOWED_TOOLS.join(', ')}` 
+    return res.status(403).json({
+      ok: false,
+      error: `Tool '${tool}' not allowed. Allowed tools: ${CONFIG.ALLOWED_TOOLS.join(', ')}`
     });
   }
   
@@ -508,14 +510,14 @@ app.listen(CONFIG.PORT, '0.0.0.0', () => {
   console.log('='.repeat(60));
   console.log(`✅ Running on http://0.0.0.0:${CONFIG.PORT}`);
   console.log(`🔒 Auth: Bearer token required`);
-  console.log(`📋 Allowed tools: ${CONFIG.ALLOWED_TOOLS.join(', ')}`);
+  console.log(`📋 Allowed tools: ${CONFIG.ALLOWED_TOOLS ? CONFIG.ALLOWED_TOOLS.join(', ') : 'ALL (unrestricted)'}`);
   console.log(`⏱️  Timeout: ${CONFIG.COMMAND_TIMEOUT}ms`);
   console.log(`📝 Logs: ${CONFIG.LOG_DIR}`);
   console.log('='.repeat(60) + '\n');
   
-  log('info', 'Bridge server started', { 
-    port: CONFIG.PORT, 
-    allowedTools: CONFIG.ALLOWED_TOOLS 
+  log('info', 'Bridge server started', {
+    port: CONFIG.PORT,
+    allowedTools: CONFIG.ALLOWED_TOOLS || 'ALL'
   });
 });
 
