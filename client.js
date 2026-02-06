@@ -92,6 +92,85 @@ class RemoteExecutorClient {
     return this.execute({ tool: 'python', command: script, args, timeout });
   }
   
+  // ==================== JOBS ASSÍNCRONOS ====================
+
+  /**
+   * Submete um job assíncrono (retorna jobId imediatamente)
+   * Ideal para comandos demorados como codex, claude, etc.
+   */
+  async submitJob({ tool, command, args = [], timeout }) {
+    const url = `${this.baseUrl}/jobs/run`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.token}`
+      },
+      body: JSON.stringify({ tool, command, args, timeout }),
+      signal: AbortSignal.timeout(10000) // 10s para submeter
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    return result;
+  }
+
+  /**
+   * Consulta status de um job
+   */
+  async getJobStatus(jobId) {
+    const url = `${this.baseUrl}/jobs/${jobId}`;
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${this.token}` },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    return result;
+  }
+
+  /**
+   * Lista todos os jobs
+   */
+  async listJobs() {
+    const url = `${this.baseUrl}/jobs`;
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${this.token}` },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    return result;
+  }
+
+  /**
+   * Submete job e aguarda conclusão (poll automático)
+   * @param {Object} params - Mesmos params de submitJob
+   * @param {number} pollInterval - Intervalo entre polls em ms (padrão: 3000)
+   * @param {number} maxWait - Tempo máximo de espera em ms (padrão: 600000 = 10min)
+   */
+  async executeAsync({ tool, command, args = [], timeout }, pollInterval = 3000, maxWait = 600000) {
+    const submission = await this.submitJob({ tool, command, args, timeout });
+    const jobId = submission.jobId;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+
+      const status = await this.getJobStatus(jobId);
+      if (status.status !== 'running') {
+        return status;
+      }
+    }
+
+    throw new Error(`Job ${jobId} timeout after ${maxWait}ms`);
+  }
+
   // ==================== OPERAÇÕES DE ARQUIVO ====================
 
   /**

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node bridge-server.js",
     "dev": "nodemon bridge-server.js",
-    "test": "node test-bridge.js"
+    "test": "node test-bridge.js --start-server"
   },
   "keywords": [
     "jarbas",

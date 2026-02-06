@@ -143,6 +143,145 @@
         }
       }
     },
+    "/jobs/run": {
+      "post": {
+        "summary": "Executar comando assíncrono (retorna jobId imediatamente)",
+        "description": "Cria um job assíncrono para comandos demorados como codex, claude, etc. Retorna um jobId imediatamente. Use GET /jobs/{jobId} para consultar o resultado depois. Ideal para comandos que podem levar mais de 30 segundos.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tool", "command"],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "description": "Ferramenta a usar",
+                    "example": "codex"
+                  },
+                  "command": {
+                    "type": "string",
+                    "description": "Comando a executar",
+                    "example": "liste os arquivos do projeto"
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Argumentos adicionais"
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "description": "Timeout em ms (padrão: 600000 = 10min)",
+                    "example": 300000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job criado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "jobId": { "type": "string", "example": "job_1738850000000_1" },
+                    "status": { "type": "string", "example": "running" },
+                    "message": { "type": "string", "example": "Job started. Poll GET /jobs/job_1738850000000_1 for status." }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Campos obrigatórios faltando" },
+          "401": { "description": "Token inválido" },
+          "403": { "description": "Ferramenta não permitida" }
+        }
+      }
+    },
+    "/jobs/{jobId}": {
+      "get": {
+        "summary": "Consultar status de um job assíncrono",
+        "description": "Retorna o status atual de um job. Se status='running', o job ainda está executando - faça polling a cada 3-5 segundos. Se status='completed' ou 'failed', o resultado final (stdout/stderr) está disponível.",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "ID do job retornado por POST /jobs/run",
+            "example": "job_1738850000000_1"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status do job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "id": { "type": "string" },
+                    "tool": { "type": "string" },
+                    "command": { "type": "string" },
+                    "status": { "type": "string", "enum": ["running", "completed", "failed"] },
+                    "stdout": { "type": "string", "description": "Saída do comando (vazio enquanto running)" },
+                    "stderr": { "type": "string" },
+                    "exitCode": { "type": "integer", "nullable": true },
+                    "error": { "type": "string", "description": "Mensagem de erro (só em failed)" },
+                    "elapsed": { "type": "integer", "description": "Tempo decorrido/total em ms" },
+                    "createdAt": { "type": "integer", "description": "Timestamp de criação" },
+                    "completedAt": { "type": "integer", "nullable": true, "description": "Timestamp de conclusão" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Job não encontrado (pode ter expirado após 1 hora)" }
+        }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "summary": "Listar todos os jobs",
+        "description": "Retorna lista resumida de todos os jobs ativos. Jobs são removidos automaticamente após 1 hora.",
+        "responses": {
+          "200": {
+            "description": "Lista de jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "example": true },
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "tool": { "type": "string" },
+                          "command": { "type": "string" },
+                          "status": { "type": "string", "enum": ["running", "completed", "failed"] },
+                          "createdAt": { "type": "integer" },
+                          "elapsed": { "type": "integer" }
+                        }
+                      }
+                    },
+                    "count": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/files/read": {
       "post": {
         "summary": "Ler conteúdo de arquivo",

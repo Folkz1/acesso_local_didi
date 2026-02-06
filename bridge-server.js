@@ -115,7 +115,6 @@ function executePowerShell(command, timeout) {
       '-ExecutionPolicy', 'Bypass',
       '-Command', command
     ], {
-      shell: true,
       windowsHide: true
     });
     
@@ -284,6 +283,134 @@ app.post('/run', authMiddleware, async (req, res) => {
       executionTime: err.executionTime
     });
   }
+});
+
+// ==================== JOBS ASSÍNCRONOS ====================
+
+const jobs = new Map();
+let jobCounter = 0;
+
+function generateJobId() {
+  jobCounter++;
+  return `job_${Date.now()}_${jobCounter}`;
+}
+
+// Limpar jobs antigos (mais de 1 hora)
+const jobCleanupInterval = setInterval(() => {
+  const oneHourAgo = Date.now() - 3600000;
+  for (const [id, job] of jobs) {
+    if (job.createdAt < oneHourAgo && job.status !== 'running') {
+      jobs.delete(id);
+    }
+  }
+}, 300000); // Limpa a cada 5 min
+jobCleanupInterval.unref();
+
+// Criar job assíncrono (retorna imediatamente com jobId)
+app.post('/jobs/run', authMiddleware, async (req, res) => {
+  const { tool, command, args = [], timeout } = req.body;
+
+  if (!tool || !command) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Missing required fields: tool, command'
+    });
+  }
+
+  if (CONFIG.ALLOWED_TOOLS && !CONFIG.ALLOWED_TOOLS.includes(tool)) {
+    return res.status(403).json({
+      ok: false,
+      error: `Tool '${tool}' not allowed`
+    });
+  }
+
+  const jobId = generateJobId();
+  const execTimeout = timeout || CONFIG.COMMAND_TIMEOUT;
+
+  const job = {
+    id: jobId,
+    tool,
+    command: command.substring(0, 200),
+    status: 'running',
+    stdout: '',
+    stderr: '',
+    exitCode: null,
+    executionTime: null,
+    createdAt: Date.now(),
+    completedAt: null
+  };
+
+  jobs.set(jobId, job);
+
+  log('info', 'Job started', { jobId, tool, command: command.substring(0, 100) });
+
+  // Executar em background
+  (async () => {
+    try {
+      let result;
+      if (tool === 'powershell') {
+        result = await executePowerShell(command, execTimeout);
+      } else {
+        result = await executeCommand(tool, command, args, execTimeout);
+      }
+
+      job.status = 'completed';
+      job.stdout = result.stdout;
+      job.stderr = result.stderr;
+      job.exitCode = result.exitCode;
+      job.executionTime = result.executionTime;
+      job.completedAt = Date.now();
+
+      log('info', 'Job completed', { jobId, exitCode: result.exitCode, executionTime: result.executionTime });
+    } catch (err) {
+      job.status = 'failed';
+      job.stdout = err.stdout || '';
+      job.stderr = err.stderr || '';
+      job.exitCode = err.exitCode || 1;
+      job.error = err.error || err.message || 'Execution failed';
+      job.executionTime = err.executionTime;
+      job.completedAt = Date.now();
+
+      log('error', 'Job failed', { jobId, error: job.error });
+    }
+  })();
+
+  // Retorna imediatamente
+  res.json({
+    ok: true,
+    jobId,
+    status: 'running',
+    message: `Job started. Poll GET /jobs/${jobId} for status.`
+  });
+});
+
+// Consultar status de um job
+app.get('/jobs/:id', authMiddleware, (req, res) => {
+  const job = jobs.get(req.params.id);
+
+  if (!job) {
+    return res.status(404).json({ ok: false, error: 'Job not found' });
+  }
+
+  res.json({
+    ok: true,
+    ...job,
+    elapsed: job.status === 'running' ? Date.now() - job.createdAt : job.executionTime
+  });
+});
+
+// Listar todos os jobs
+app.get('/jobs', authMiddleware, (req, res) => {
+  const jobList = Array.from(jobs.values()).map(j => ({
+    id: j.id,
+    tool: j.tool,
+    command: j.command,
+    status: j.status,
+    createdAt: j.createdAt,
+    elapsed: j.status === 'running' ? Date.now() - j.createdAt : j.executionTime
+  }));
+
+  res.json({ ok: true, jobs: jobList, count: jobList.length });
 });
 
 // ==================== OPERAÇÕES DE ARQUIVO ====================
@@ -504,7 +631,8 @@ app.post('/files/edit', authMiddleware, async (req, res) => {
 
 // ==================== INICIAR SERVIDOR ====================
 
-app.listen(CONFIG.PORT, '0.0.0.0', () => {
+function startServer(port = CONFIG.PORT) {
+  const server = app.listen(port, '0.0.0.0', () => {
   console.log('\n' + '='.repeat(60));
   console.log('🌐 Jarbas Remote Bridge Server');
   console.log('='.repeat(60));
@@ -521,13 +649,25 @@ app.listen(CONFIG.PORT, '0.0.0.0', () => {
   });
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  log('info', 'Shutting down bridge server');
-  process.exit(0);
-});
+  return server;
+}
 
-process.on('SIGTERM', () => {
-  log('info', 'Shutting down bridge server');
-  process.exit(0);
-});
+if (require.main === module) {
+  const server = startServer();
+
+  const shutdown = (signal) => {
+    log('info', 'Shutting down bridge server', { signal });
+
+    server.close(() => {
+      process.exit(0);
+    });
+
+    // Fallback: não ficar travado se houver conexões abertas
+    setTimeout(() => process.exit(0), 2000).unref();
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+module.exports = { app, CONFIG, startServer };

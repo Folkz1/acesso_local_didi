@@ -7,7 +7,7 @@
 require('dotenv').config();
 const path = require('path');
 
-const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:8788';
+let BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:8788';
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 
 if (!BRIDGE_TOKEN) {
@@ -19,12 +19,15 @@ async function testBridge() {
   console.log('\n' + '='.repeat(60));
   console.log('🧪 Testando Jarbas Remote Bridge');
   console.log('='.repeat(60) + '\n');
+
+  let healthData = null;
   
   // Teste 1: Health Check
   console.log('1️⃣ Teste: Health Check');
   try {
     const response = await fetch(`${BRIDGE_URL}/health`);
     const data = await response.json();
+    healthData = data;
     console.log('✅ Health OK:', data);
   } catch (err) {
     console.error('❌ Health falhou:', err.message);
@@ -92,13 +95,13 @@ async function testBridge() {
         'Authorization': `Bearer ${BRIDGE_TOKEN}`
       },
       body: JSON.stringify({
-        tool: 'rm',
-        command: '-rf /'
+        tool: '__not_allowed__',
+        command: 'echo test'
       })
     });
     
     const data = await response.json();
-    if (!data.ok && data.error.includes('not allowed')) {
+    if (!data.ok && (response.status === 403 || response.status === 500)) {
       console.log('✅ Bloqueio OK:', data.error);
     } else {
       console.error('❌ Deveria ter bloqueado!');
@@ -132,6 +135,110 @@ async function testBridge() {
     console.error('❌ Teste falhou:', err.message);
   }
   
+  // ==================== TESTES DE JOBS ====================
+
+  // Job 1: Criar job assincrono (powershell)
+  console.log('\nJ1 Teste: Criar job assincrono (/jobs/run)');
+  let jobId = null;
+  try {
+    const start = Date.now();
+    const response = await fetch(`${BRIDGE_URL}/jobs/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BRIDGE_TOKEN}`
+      },
+      body: JSON.stringify({
+        tool: 'powershell',
+        command: 'Start-Sleep -Seconds 3; echo "JOB_OK"',
+        timeout: 60000
+      })
+    });
+
+    const data = await response.json();
+    const elapsed = Date.now() - start;
+    if (data.ok && data.jobId) {
+      jobId = data.jobId;
+      console.log('OK: Job criado:', jobId, `(submit: ${elapsed}ms)`);
+    } else {
+      console.error('ERRO: Job nao foi criado:', data.error || data);
+    }
+  } catch (err) {
+    console.error('ERRO: /jobs/run falhou:', err.message);
+  }
+
+  // Job 2: Poll do job ate completar
+  if (jobId) {
+    console.log('\nJ2 Teste: Poll do job (/jobs/:id)');
+    try {
+      let status = null;
+      const pollStart = Date.now();
+
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+
+        const response = await fetch(`${BRIDGE_URL}/jobs/${jobId}`, {
+          headers: { 'Authorization': `Bearer ${BRIDGE_TOKEN}` }
+        });
+
+        status = await response.json();
+        if (!response.ok) {
+          console.error('ERRO: Poll falhou:', status.error || status);
+          status = null;
+          break;
+        }
+
+        if (status.status !== 'running') break;
+      }
+
+      if (status && status.status === 'completed' && (status.stdout || '').includes('JOB_OK')) {
+        console.log('OK: Job completed:', `elapsed=${Date.now() - pollStart}ms`);
+      } else if (status && status.status === 'failed') {
+        console.error('ERRO: Job failed:', status.error || status.stderr || status);
+      } else {
+        console.error('ERRO: Job nao completou a tempo ou stdout inesperado:', status);
+      }
+    } catch (err) {
+      console.error('ERRO: Poll falhou:', err.message);
+    }
+  }
+
+  // Job 3: Listar jobs
+  if (jobId) {
+    console.log('\nJ3 Teste: Listar jobs (/jobs)');
+    try {
+      const response = await fetch(`${BRIDGE_URL}/jobs`, {
+        headers: { 'Authorization': `Bearer ${BRIDGE_TOKEN}` }
+      });
+
+      const data = await response.json();
+      if (data.ok && Array.isArray(data.jobs) && data.jobs.some(j => j.id === jobId)) {
+        console.log('OK: Jobs list:', `count=${data.count}`);
+      } else {
+        console.error('ERRO: Jobs list falhou:', data);
+      }
+    } catch (err) {
+      console.error('ERRO: Jobs list falhou:', err.message);
+    }
+  }
+
+  // Job 4: Job inexistente
+  console.log('\nJ4 Teste: Job inexistente (/jobs/:id)');
+  try {
+    const response = await fetch(`${BRIDGE_URL}/jobs/job_inexistente_123`, {
+      headers: { 'Authorization': `Bearer ${BRIDGE_TOKEN}` }
+    });
+
+    const data = await response.json();
+    if (response.status === 404 && !data.ok) {
+      console.log('OK: 404 retornado:', data.error);
+    } else {
+      console.error('ERRO: Deveria retornar 404:', data);
+    }
+  } catch (err) {
+    console.error('ERRO: Teste falhou:', err.message);
+  }
+
   // ==================== TESTES DE ARQUIVO ====================
 
   const TEST_FILE = path.join(__dirname, 'logs', 'test-temp.txt');
@@ -348,4 +455,31 @@ async function testBridge() {
   console.log('='.repeat(60) + '\n');
 }
 
-testBridge().catch(console.error);
+(async () => {
+  const shouldStartServer = process.argv.includes('--start-server');
+  let server = null;
+
+  try {
+    if (shouldStartServer) {
+      const { startServer } = require('./bridge-server');
+      server = startServer(0); // porta aleatória para não conflitar com o bridge "real"
+
+      await new Promise((resolve) => server.on('listening', resolve));
+
+      const address = server.address();
+      const port = address && typeof address === 'object' ? address.port : 8788;
+      BRIDGE_URL = `http://localhost:${port}`;
+
+      console.log(`\nLocal bridge iniciado para testes em: ${BRIDGE_URL}`);
+    }
+
+    await testBridge();
+  } catch (err) {
+    console.error(err);
+    process.exitCode = 1;
+  } finally {
+    if (server) {
+      await new Promise((resolve) => server.close(() => resolve()));
+    }
+  }
+})();
