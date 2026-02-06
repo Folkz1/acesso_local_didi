@@ -2,13 +2,13 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Jarbas Remote Executor Bridge",
-    "description": "API para controlar remotamente um computador Windows via Tailscale. Permite executar comandos no PowerShell, Codex, Claude CLI e outras ferramentas, além de operações completas no sistema de arquivos (ler, escrever, listar, deletar, editar). O bridge roda no PC local e é acessado pela VPS via rede privada Tailscale.",
+    "description": "API para controlar remotamente um computador Windows. Permite executar comandos no PowerShell, Codex, Claude CLI e outras ferramentas, além de operações completas no sistema de arquivos (ler, escrever, listar, deletar, editar). O bridge roda no PC local e é acessado via Cloudflare Tunnel.",
     "version": "1.0.0"
   },
   "servers": [
     {
-      "url": "http://TAILSCALE_IP:8788",
-      "description": "Bridge server no PC local (substituir TAILSCALE_IP pelo IP real)"
+      "url": "https://presentations-rest-studios-tab.trycloudflare.com",
+      "description": "Bridge server via Cloudflare Tunnel (URL atualizada automaticamente)"
     }
   ],
   "components": {
