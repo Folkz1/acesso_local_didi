@@ -17,7 +17,14 @@ const path = require("path");
 const URL_FILE = path.join(__dirname, "tunnel-url.txt");
 const OPENAPI_FILE = path.join(__dirname, "openapi.json");
 
-const MEMORY_URL = process.env.JARBAS_MEMORY_URL || "";
+let MEMORY_URL = process.env.JARBAS_MEMORY_URL || "";
+if (MEMORY_URL) {
+  MEMORY_URL = MEMORY_URL.trim();
+  if (MEMORY_URL && !/^https?:\/\//i.test(MEMORY_URL)) {
+    MEMORY_URL = `https://${MEMORY_URL}`;
+  }
+  MEMORY_URL = MEMORY_URL.replace(/\/+$/, "");
+}
 // Memory Core server uses JARBAS_MEMORY_AUTH_TOKEN. Keep backward compat with JARBAS_MEMORY_TOKEN.
 const MEMORY_TOKEN =
   process.env.JARBAS_MEMORY_AUTH_TOKEN ||
