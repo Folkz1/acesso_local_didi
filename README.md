@@ -50,7 +50,7 @@ Campos criticos:
 Campos para notificacao/sincronizacao:
 
 - `JARBAS_MEMORY_URL`
-- `JARBAS_MEMORY_TOKEN`
+- `JARBAS_MEMORY_AUTH_TOKEN` (recomendado) ou `JARBAS_MEMORY_TOKEN`
 - `EVOLUTION_URL`
 - `EVOLUTION_KEY`
 - `EVOLUTION_INSTANCE`

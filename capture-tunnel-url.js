@@ -1,63 +1,72 @@
-﻿/**
- * Captura a URL do Cloudflare Quick Tunnel e salva/envia
- * LÃª stdin do cloudflared e procura a URL trycloudflare.com
- * Envia via WhatsApp (Evolution API) e Jarbas Memory API
+/**
+ * Captures the Cloudflare Quick Tunnel URL from cloudflared stdout.
+ *
+ * Side effects:
+ * - Saves it to tunnel-url.txt
+ * - Updates openapi.json servers[0].url
+ * - Optionally notifies via WhatsApp (Evolution API)
+ * - Optionally syncs to Jarbas Memory Core (/bridge/sync)
  */
 
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
+require("dotenv").config();
 
-const URL_FILE = path.join(__dirname, 'tunnel-url.txt');
-const OPENAPI_FILE = path.join(__dirname, 'openapi.json');
-const MEMORY_URL = process.env.JARBAS_MEMORY_URL || '';
-const MEMORY_TOKEN = process.env.JARBAS_MEMORY_TOKEN || '';
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+const URL_FILE = path.join(__dirname, "tunnel-url.txt");
+const OPENAPI_FILE = path.join(__dirname, "openapi.json");
+
+const MEMORY_URL = process.env.JARBAS_MEMORY_URL || "";
+// Memory Core server uses JARBAS_MEMORY_AUTH_TOKEN. Keep backward compat with JARBAS_MEMORY_TOKEN.
+const MEMORY_TOKEN =
+  process.env.JARBAS_MEMORY_AUTH_TOKEN ||
+  process.env.JARBAS_MEMORY_TOKEN ||
+  "";
+
 const BRIDGE_TOKEN =
   process.env.BRIDGE_TOKEN ||
   process.env.REMOTE_BRIDGE_TOKEN ||
-  'jarbas_bridge_2026_acesso_remoto_seguro_didi_token_secreto';
+  "jarbas_bridge_2026_acesso_remoto_seguro_didi_token_secreto";
 
 // Evolution API Config
-const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://apps-evolution-api.klx2s6.easypanel.host';
-const EVOLUTION_KEY = process.env.EVOLUTION_KEY || '94844982814C-49AB-8CEE-F6E840AA3DF5';
-const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || 'teste';
-const NOTIFY_NUMBER = process.env.NOTIFY_NUMBER || '5551993299031';
+const EVOLUTION_URL =
+  process.env.EVOLUTION_URL || "https://apps-evolution-api.klx2s6.easypanel.host";
+const EVOLUTION_KEY =
+  process.env.EVOLUTION_KEY || "94844982814C-49AB-8CEE-F6E840AA3DF5";
+const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || "teste";
+const NOTIFY_NUMBER = process.env.NOTIFY_NUMBER || "5551993299031";
 
 let urlFound = false;
 
-process.stdin.setEncoding('utf8');
+process.stdin.setEncoding("utf8");
 
-process.stdin.on('data', (chunk) => {
-  // Mostrar output do cloudflared
+process.stdin.on("data", (chunk) => {
+  // Keep cloudflared output visible.
   process.stdout.write(chunk);
 
-  // Procurar URL do tunnel
-  if (!urlFound) {
-    const match = chunk.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
-    if (match) {
-      const tunnelUrl = match[0];
-      urlFound = true;
+  if (urlFound) return;
 
-      console.log('\n============================================');
-      console.log('  TUNNEL URL CAPTURADA!');
-      console.log('  ' + tunnelUrl);
-      console.log('============================================\n');
+  const match = chunk.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+  if (!match) return;
 
-      // Salvar em arquivo
-      fs.writeFileSync(URL_FILE, tunnelUrl, 'utf8');
-      console.log('URL salva em: ' + URL_FILE);
+  const tunnelUrl = match[0];
+  urlFound = true;
 
-      // Atualizar OpenAPI para o OpenClaw usar URL nova
-      updateOpenApiServerUrl(tunnelUrl);
+  console.log("\n============================================");
+  console.log("  TUNNEL URL CAPTURED");
+  console.log("  " + tunnelUrl);
+  console.log("============================================\n");
 
-      // Enviar via WhatsApp
-      sendWhatsApp(tunnelUrl);
+  fs.writeFileSync(URL_FILE, tunnelUrl, "utf8");
+  console.log("URL saved to: " + URL_FILE);
 
-      // Enviar para Jarbas Memory API (se configurado)
-      if (MEMORY_URL && MEMORY_TOKEN) {
-        sendToJarbas(tunnelUrl);
-      }
-    }
+  updateOpenApiServerUrl(tunnelUrl);
+
+  // Fire-and-forget side effects (do not block cloudflared output).
+  void sendWhatsApp(tunnelUrl);
+  if (MEMORY_URL && MEMORY_TOKEN) {
+    void sendToJarbas(tunnelUrl);
   }
 });
 
@@ -65,48 +74,54 @@ function updateOpenApiServerUrl(tunnelUrl) {
   try {
     if (!fs.existsSync(OPENAPI_FILE)) return;
 
-    const openapi = JSON.parse(fs.readFileSync(OPENAPI_FILE, 'utf8'));
+    const openapi = JSON.parse(fs.readFileSync(OPENAPI_FILE, "utf8"));
     if (!Array.isArray(openapi.servers) || openapi.servers.length === 0) {
-      openapi.servers = [{ url: tunnelUrl, description: 'Bridge server via Cloudflare Tunnel' }];
+      openapi.servers = [
+        { url: tunnelUrl, description: "Bridge server via Cloudflare Tunnel" },
+      ];
     } else {
       openapi.servers[0].url = tunnelUrl;
     }
 
-    fs.writeFileSync(OPENAPI_FILE, JSON.stringify(openapi, null, 2), 'utf8');
-    console.log('OpenAPI atualizado em: ' + OPENAPI_FILE);
+    fs.writeFileSync(OPENAPI_FILE, JSON.stringify(openapi, null, 2), "utf8");
+    console.log("OpenAPI updated at: " + OPENAPI_FILE);
   } catch (err) {
-    console.log('Aviso: falha ao atualizar openapi.json:', err.message);
+    console.log("Warn: failed to update openapi.json:", err.message);
   }
 }
 
 async function sendWhatsApp(tunnelUrl) {
-  const message = `ðŸŒ *Jarbas Remote Bridge*\n\n` +
+  const message =
+    `Jarbas Remote Bridge\n\n` +
     `Nova URL do tunnel:\n${tunnelUrl}\n\n` +
-    `ðŸ”‘ Token: ${BRIDGE_TOKEN}\n\n` +
-    `ðŸ“¡ Health: ${tunnelUrl}/health\n` +
-    `â° ${new Date().toLocaleString('pt-BR')}`;
+    `Token: ${BRIDGE_TOKEN}\n\n` +
+    `Health: ${tunnelUrl}/health\n` +
+    `Quando: ${new Date().toLocaleString("pt-BR")}`;
 
   try {
-    const response = await fetch(`${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': EVOLUTION_KEY
+    const response = await fetch(
+      `${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: EVOLUTION_KEY,
+        },
+        body: JSON.stringify({
+          number: NOTIFY_NUMBER,
+          text: message,
+        }),
       },
-      body: JSON.stringify({
-        number: NOTIFY_NUMBER,
-        text: message
-      })
-    });
+    );
 
-    const result = await response.json();
+    const result = await response.json().catch(() => null);
     if (response.ok) {
-      console.log('URL enviada via WhatsApp para ' + NOTIFY_NUMBER);
+      console.log("URL sent via WhatsApp to " + NOTIFY_NUMBER);
     } else {
-      console.log('Erro WhatsApp:', JSON.stringify(result));
+      console.log("WhatsApp error:", JSON.stringify(result));
     }
   } catch (err) {
-    console.log('Aviso: nao conseguiu enviar WhatsApp:', err.message);
+    console.log("Warn: failed to send WhatsApp:", err.message);
   }
 }
 
@@ -117,63 +132,64 @@ async function sendToJarbas(tunnelUrl) {
 
 async function syncBridgeState(tunnelUrl) {
   try {
-    const response = await fetch(MEMORY_URL + '/bridge/sync', {
-      method: 'POST',
+    const response = await fetch(MEMORY_URL + "/bridge/sync", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + MEMORY_TOKEN
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + MEMORY_TOKEN,
       },
       body: JSON.stringify({
         url: tunnelUrl,
         token: BRIDGE_TOKEN,
         health_url: `${tunnelUrl}/health`,
-        source: 'cloudflare-quick-tunnel',
+        source: "cloudflare-quick-tunnel",
         instance: EVOLUTION_INSTANCE,
-        host: require('os').hostname()
-      })
+        host: os.hostname(),
+      }),
     });
 
     if (response.ok) {
-      console.log('Bridge state sincronizado no Jarbas API!');
-    } else {
-      const errorText = await response.text();
-      console.log('Aviso: falha ao sincronizar bridge state:', errorText);
+      console.log("Bridge state synced to Jarbas Memory Core.");
+      return;
     }
+
+    const errorText = await response.text().catch(() => "");
+    console.log("Warn: /bridge/sync failed:", errorText);
   } catch (err) {
-    console.log('Aviso: nao conseguiu sincronizar bridge state:', err.message);
+    console.log("Warn: /bridge/sync failed:", err.message);
   }
 }
 
 async function sendToMemory(tunnelUrl) {
   try {
-    const response = await fetch(MEMORY_URL + '/memory/save', {
-      method: 'POST',
+    const response = await fetch(MEMORY_URL + "/memory/save", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + MEMORY_TOKEN
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + MEMORY_TOKEN,
       },
       body: JSON.stringify({
-        key: 'bridge_tunnel_url',
-        type: 'config',
-        title: 'Bridge Tunnel URL',
+        key: "bridge_tunnel_url",
+        type: "config",
+        title: "Bridge Tunnel URL",
         content: tunnelUrl,
-        tags: ['bridge', 'tunnel', 'config'],
+        tags: ["bridge", "tunnel", "config"],
         metadata: {
           updated_at: new Date().toISOString(),
-          pc_name: require('os').hostname()
-        }
-      })
+          pc_name: os.hostname(),
+        },
+      }),
     });
 
     if (response.ok) {
-      console.log('URL enviada para Jarbas Memory API!');
+      console.log("URL saved to Jarbas Memory Core.");
     }
   } catch (err) {
-    console.log('Aviso: nao conseguiu enviar para Memory API:', err.message);
+    console.log("Warn: /memory/save failed:", err.message);
   }
 }
 
-process.stdin.on('end', () => {
-  console.log('Cloudflared encerrou.');
+process.stdin.on("end", () => {
+  console.log("cloudflared exited.");
 });
 
