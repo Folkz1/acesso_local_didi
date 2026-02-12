@@ -15,7 +15,8 @@ const os = require("os");
 const path = require("path");
 
 const URL_FILE = path.join(__dirname, "tunnel-url.txt");
-const OPENAPI_FILE = path.join(__dirname, "openapi.json");
+const OPENAPI_TEMPLATE_FILE = path.join(__dirname, "openapi.json");
+const OPENAPI_RUNTIME_FILE = path.join(__dirname, "openapi.runtime.json");
 
 let MEMORY_URL = process.env.JARBAS_MEMORY_URL || "";
 if (MEMORY_URL) {
@@ -32,17 +33,13 @@ const MEMORY_TOKEN =
   "";
 
 const BRIDGE_TOKEN =
-  process.env.BRIDGE_TOKEN ||
-  process.env.REMOTE_BRIDGE_TOKEN ||
-  "jarbas_bridge_2026_acesso_remoto_seguro_didi_token_secreto";
+  process.env.BRIDGE_TOKEN || process.env.REMOTE_BRIDGE_TOKEN || "";
 
 // Evolution API Config
-const EVOLUTION_URL =
-  process.env.EVOLUTION_URL || "https://apps-evolution-api.klx2s6.easypanel.host";
-const EVOLUTION_KEY =
-  process.env.EVOLUTION_KEY || "94844982814C-49AB-8CEE-F6E840AA3DF5";
-const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || "teste";
-const NOTIFY_NUMBER = process.env.NOTIFY_NUMBER || "5551993299031";
+const EVOLUTION_URL = (process.env.EVOLUTION_URL || "").trim();
+const EVOLUTION_KEY = (process.env.EVOLUTION_KEY || "").trim();
+const EVOLUTION_INSTANCE = (process.env.EVOLUTION_INSTANCE || "").trim();
+const NOTIFY_NUMBER = (process.env.NOTIFY_NUMBER || "").trim();
 
 let urlFound = false;
 
@@ -57,13 +54,12 @@ process.stdin.on("data", (chunk) => {
   const match = chunk.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
   if (!match) return;
 
-  const tunnelUrl = match[0];
-  urlFound = true;
+  void handleTunnelUrl(match[0]);
+});
 
-  console.log("\n============================================");
-  console.log("  TUNNEL URL CAPTURED");
-  console.log("  " + tunnelUrl);
-  console.log("============================================\n");
+async function handleTunnelUrl(tunnelUrl) {
+  if (urlFound) return;
+  urlFound = true;
 
   fs.writeFileSync(URL_FILE, tunnelUrl, "utf8");
   console.log("URL saved to: " + URL_FILE);
@@ -72,16 +68,29 @@ process.stdin.on("data", (chunk) => {
 
   // Fire-and-forget side effects (do not block cloudflared output).
   void sendWhatsApp(tunnelUrl);
-  if (MEMORY_URL && MEMORY_TOKEN) {
-    void sendToJarbas(tunnelUrl);
-  }
-});
+  if (MEMORY_URL && MEMORY_TOKEN) void sendToJarbas(tunnelUrl);
+}
+
+function readArgValue(name) {
+  const idx = process.argv.indexOf(name);
+  if (idx === -1) return null;
+  return process.argv[idx + 1] || null;
+}
+
+function looksLikeTunnelUrl(s) {
+  return typeof s === "string" && /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(s.trim());
+}
+
+const urlArg = readArgValue("--url");
+if (urlArg && looksLikeTunnelUrl(urlArg)) {
+  void handleTunnelUrl(urlArg.trim());
+}
 
 function updateOpenApiServerUrl(tunnelUrl) {
   try {
-    if (!fs.existsSync(OPENAPI_FILE)) return;
+    if (!fs.existsSync(OPENAPI_TEMPLATE_FILE)) return;
 
-    const openapi = JSON.parse(fs.readFileSync(OPENAPI_FILE, "utf8"));
+    const openapi = JSON.parse(fs.readFileSync(OPENAPI_TEMPLATE_FILE, "utf8"));
     if (!Array.isArray(openapi.servers) || openapi.servers.length === 0) {
       openapi.servers = [
         { url: tunnelUrl, description: "Bridge server via Cloudflare Tunnel" },
@@ -90,18 +99,29 @@ function updateOpenApiServerUrl(tunnelUrl) {
       openapi.servers[0].url = tunnelUrl;
     }
 
-    fs.writeFileSync(OPENAPI_FILE, JSON.stringify(openapi, null, 2), "utf8");
-    console.log("OpenAPI updated at: " + OPENAPI_FILE);
+    fs.writeFileSync(
+      OPENAPI_RUNTIME_FILE,
+      JSON.stringify(openapi, null, 2),
+      "utf8",
+    );
+    console.log("OpenAPI runtime written at: " + OPENAPI_RUNTIME_FILE);
   } catch (err) {
     console.log("Warn: failed to update openapi.json:", err.message);
   }
 }
 
 async function sendWhatsApp(tunnelUrl) {
+  if (!EVOLUTION_URL || !EVOLUTION_KEY || !EVOLUTION_INSTANCE || !NOTIFY_NUMBER) {
+    console.log(
+      "WhatsApp notify skipped: set EVOLUTION_URL, EVOLUTION_KEY, EVOLUTION_INSTANCE, NOTIFY_NUMBER in .env",
+    );
+    return;
+  }
+
   const message =
     `Jarbas Remote Bridge\n\n` +
     `Nova URL do tunnel:\n${tunnelUrl}\n\n` +
-    `Token: ${BRIDGE_TOKEN}\n\n` +
+    (BRIDGE_TOKEN ? `Token: ${BRIDGE_TOKEN}\n\n` : "") +
     `Health: ${tunnelUrl}/health\n` +
     `Quando: ${new Date().toLocaleString("pt-BR")}`;
 

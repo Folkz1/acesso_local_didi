@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://fda-tyler-whenever-qld.trycloudflare.com",
+      "url": "https://example.trycloudflare.com",
       "description": "Bridge server via Cloudflare Tunnel (URL atualizada automaticamente)"
     }
   ],
