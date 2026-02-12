@@ -7,7 +7,7 @@
 
 require('dotenv').config();
 const express = require('express');
-const { exec, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
 
@@ -105,103 +105,136 @@ function validatePath(filePath) {
 /**
  * Executa comando PowerShell com privilégios admin
  */
-function executePowerShell(command, timeout) {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-    
-    // PowerShell com ExecutionPolicy Bypass para admin
-    const ps = spawn('powershell.exe', [
-      '-NoProfile',
-      '-ExecutionPolicy', 'Bypass',
-      '-Command', command
-    ], {
-      windowsHide: true
-    });
-    
-    let stdout = '';
-    let stderr = '';
-    let killed = false;
-    
-    const timer = setTimeout(() => {
-      killed = true;
-      ps.kill('SIGTERM');
-      reject({ 
-        error: 'Command timeout', 
-        timeout: true,
-        executionTime: Date.now() - startTime 
-      });
-    }, timeout);
-    
-    ps.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-    
-    ps.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-    
-    ps.on('close', (exitCode) => {
-      clearTimeout(timer);
-      
-      if (killed) return;
-      
-      const executionTime = Date.now() - startTime;
-      
-      if (exitCode === 0) {
-        resolve({ stdout, stderr, exitCode, executionTime });
-      } else {
-        reject({ error: 'Command failed', stdout, stderr, exitCode, executionTime });
-      }
-    });
-    
-    ps.on('error', (err) => {
-      clearTimeout(timer);
-      reject({ error: err.message, executionTime: Date.now() - startTime });
-    });
-  });
+function executePowerShell(command, timeout, options = {}) {
+  const script = String(command);
+  const encodedCommand = Buffer.from(script, 'utf16le').toString('base64');
+
+  return executeSpawnedCommand(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand],
+    timeout,
+    options
+  );
 }
 
 /**
  * Executa comando genérico (codex, claude, python, etc.)
  */
-function executeCommand(tool, command, args = [], timeout) {
+function executeCommand(tool, command, args = [], timeout, options = {}) {
+  const finalArgs = [];
+  const normalizedArgs = Array.isArray(args) ? args : [args];
+
+  if (command !== undefined && command !== null && String(command).length > 0) {
+    finalArgs.push(String(command));
+  }
+
+  for (const arg of normalizedArgs) {
+    finalArgs.push(String(arg));
+  }
+
+  return executeSpawnedCommand(tool, finalArgs, timeout, options);
+}
+
+function executeSpawnedCommand(executable, args, timeout, options = {}) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
-    
-    // Montar comando completo
-    const fullCommand = args.length > 0 
-      ? `${tool} ${command} ${args.join(' ')}`
-      : `${tool} ${command}`;
-    
-    exec(fullCommand, {
-      timeout,
-      maxBuffer: 10 * 1024 * 1024, // 10MB
-      shell: 'powershell.exe'
-    }, (error, stdout, stderr) => {
-      const executionTime = Date.now() - startTime;
-      
-      if (error) {
-        if (error.killed) {
-          return reject({ 
-            error: 'Command timeout', 
-            timeout: true, 
-            executionTime 
-          });
-        }
-        
-        return reject({
-          error: error.message,
-          stdout: stdout || '',
-          stderr: stderr || '',
-          exitCode: error.code || 1,
-          executionTime
+    const cwd = options.cwd && String(options.cwd).trim().length > 0
+      ? String(options.cwd).trim()
+      : undefined;
+    const background = options.background === true;
+
+    const child = spawn(executable, args, {
+      cwd,
+      windowsHide: true,
+      detached: false,
+      stdio: background ? 'ignore' : ['ignore', 'pipe', 'pipe']
+    });
+
+    if (background) {
+      let settled = false;
+
+      child.once('error', (err) => {
+        if (settled) return;
+        settled = true;
+        reject({
+          error: err.message,
+          executionTime: Date.now() - startTime
         });
+      });
+
+      child.once('spawn', () => {
+        if (settled) return;
+        settled = true;
+        child.unref();
+        resolve({
+          stdout: '',
+          stderr: '',
+          exitCode: 0,
+          executionTime: Date.now() - startTime,
+          background: true,
+          pid: child.pid
+        });
+      });
+
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    let finished = false;
+
+    const timer = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+
+      try {
+        child.kill('SIGTERM');
+      } catch (_) {}
+
+      reject({
+        error: 'Command timeout',
+        timeout: true,
+        stdout,
+        stderr,
+        executionTime: Date.now() - startTime
+      });
+    }, timeout);
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('error', (err) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      reject({
+        error: err.message,
+        stdout,
+        stderr,
+        executionTime: Date.now() - startTime
+      });
+    });
+
+    child.on('close', (exitCode) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+
+      const executionTime = Date.now() - startTime;
+      if (exitCode === 0) {
+        return resolve({ stdout, stderr, exitCode, executionTime });
       }
-      
-      resolve({
-        stdout: stdout || '',
-        stderr: stderr || '',
-        exitCode: 0,
+
+      reject({
+        error: 'Command failed',
+        stdout,
+        stderr,
+        exitCode: typeof exitCode === 'number' ? exitCode : 1,
         executionTime
       });
     });
@@ -224,7 +257,7 @@ app.get('/health', (req, res) => {
 
 // Executar comando
 app.post('/run', authMiddleware, async (req, res) => {
-  const { tool, command, args = [], timeout } = req.body;
+  const { tool, command, args = [], timeout, cwd, background = false } = req.body;
   
   // Validação básica
   if (!tool || !command) {
@@ -245,15 +278,22 @@ app.post('/run', authMiddleware, async (req, res) => {
   
   const execTimeout = timeout || CONFIG.COMMAND_TIMEOUT;
   
-  log('info', 'Executing command', { tool, command: command.substring(0, 100) });
+  log('info', 'Executing command', {
+    tool,
+    command: command.substring(0, 100),
+    cwd: cwd || undefined,
+    background: background === true
+  });
   
   try {
     let result;
     
+    const execOptions = { cwd, background };
+
     if (tool === 'powershell') {
-      result = await executePowerShell(command, execTimeout);
+      result = await executePowerShell(command, execTimeout, execOptions);
     } else {
-      result = await executeCommand(tool, command, args, execTimeout);
+      result = await executeCommand(tool, command, args, execTimeout, execOptions);
     }
     
     log('info', 'Command completed', { 
@@ -308,7 +348,7 @@ jobCleanupInterval.unref();
 
 // Criar job assíncrono (retorna imediatamente com jobId)
 app.post('/jobs/run', authMiddleware, async (req, res) => {
-  const { tool, command, args = [], timeout } = req.body;
+  const { tool, command, args = [], timeout, cwd, background = false } = req.body;
 
   if (!tool || !command) {
     return res.status(400).json({
@@ -331,10 +371,13 @@ app.post('/jobs/run', authMiddleware, async (req, res) => {
     id: jobId,
     tool,
     command: command.substring(0, 200),
+    cwd: cwd || null,
+    background,
     status: 'running',
     stdout: '',
     stderr: '',
     exitCode: null,
+    pid: null,
     executionTime: null,
     createdAt: Date.now(),
     completedAt: null
@@ -342,22 +385,31 @@ app.post('/jobs/run', authMiddleware, async (req, res) => {
 
   jobs.set(jobId, job);
 
-  log('info', 'Job started', { jobId, tool, command: command.substring(0, 100) });
+  log('info', 'Job started', {
+    jobId,
+    tool,
+    command: command.substring(0, 100),
+    cwd: cwd || undefined,
+    background: background === true
+  });
 
   // Executar em background
   (async () => {
     try {
       let result;
+      const execOptions = { cwd, background };
+
       if (tool === 'powershell') {
-        result = await executePowerShell(command, execTimeout);
+        result = await executePowerShell(command, execTimeout, execOptions);
       } else {
-        result = await executeCommand(tool, command, args, execTimeout);
+        result = await executeCommand(tool, command, args, execTimeout, execOptions);
       }
 
       job.status = 'completed';
       job.stdout = result.stdout;
       job.stderr = result.stderr;
       job.exitCode = result.exitCode;
+      job.pid = result.pid || null;
       job.executionTime = result.executionTime;
       job.completedAt = Date.now();
 
@@ -405,7 +457,10 @@ app.get('/jobs', authMiddleware, (req, res) => {
     id: j.id,
     tool: j.tool,
     command: j.command,
+    cwd: j.cwd,
+    background: j.background,
     status: j.status,
+    pid: j.pid || null,
     createdAt: j.createdAt,
     elapsed: j.status === 'running' ? Date.now() - j.createdAt : j.executionTime
   }));
@@ -633,10 +688,13 @@ app.post('/files/edit', authMiddleware, async (req, res) => {
 
 function startServer(port = CONFIG.PORT) {
   const server = app.listen(port, '0.0.0.0', () => {
+  const address = server.address();
+  const actualPort = address && typeof address === 'object' ? address.port : port;
+
   console.log('\n' + '='.repeat(60));
   console.log('🌐 Jarbas Remote Bridge Server');
   console.log('='.repeat(60));
-  console.log(`✅ Running on http://0.0.0.0:${CONFIG.PORT}`);
+  console.log(`✅ Running on http://0.0.0.0:${actualPort}`);
   console.log(`🔒 Auth: Bearer token required`);
   console.log(`📋 Allowed tools: ${CONFIG.ALLOWED_TOOLS ? CONFIG.ALLOWED_TOOLS.join(', ') : 'ALL (unrestricted)'}`);
   console.log(`⏱️  Timeout: ${CONFIG.COMMAND_TIMEOUT}ms`);
@@ -644,7 +702,7 @@ function startServer(port = CONFIG.PORT) {
   console.log('='.repeat(60) + '\n');
   
   log('info', 'Bridge server started', {
-    port: CONFIG.PORT,
+    port: actualPort,
     allowedTools: CONFIG.ALLOWED_TOOLS || 'ALL'
   });
 });
@@ -671,3 +729,4 @@ if (require.main === module) {
 }
 
 module.exports = { app, CONFIG, startServer };
+

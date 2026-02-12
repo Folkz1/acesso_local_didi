@@ -139,7 +139,9 @@ REMOTE_BRIDGE_TOKEN=seu_token_super_secreto_aqui_123456789
   "tool": "powershell",
   "command": "Get-Process | Select-Object -First 5",
   "args": [],
-  "timeout": 60000
+  "timeout": 60000,
+  "cwd": "D:\\projetos\\projeto-superbot",
+  "background": false
 }
 ```
 
@@ -151,7 +153,32 @@ REMOTE_BRIDGE_TOKEN=seu_token_super_secreto_aqui_123456789
   "stdout": "...",
   "stderr": "",
   "exitCode": 0,
-  "executionTime": 1234
+  "executionTime": 1234,
+  "background": false,
+  "pid": null
+}
+```
+
+### Endpoint: `POST /jobs/run` + `GET /jobs/{id}`
+
+Use para tarefas longas (codex/claude/powershell pesado) e polling sem timeout no cliente.
+
+```json
+{
+  "tool": "powershell",
+  "command": "npm run build",
+  "cwd": "D:\\projetos\\projeto-superbot",
+  "timeout": 600000
+}
+```
+
+Resposta inicial:
+
+```json
+{
+  "ok": true,
+  "jobId": "job_1738850000000_1",
+  "status": "running"
 }
 ```
 
@@ -181,6 +208,17 @@ Content-Type: application/json
 {
   "tool": "powershell",
   "command": "Get-Service | Where-Object {$_.Status -eq 'Running'}"
+}
+```
+
+### 1b. Abrir IDE/app sem travar request
+
+```json
+{
+  "tool": "powershell",
+  "command": "Start-Process code -ArgumentList '.'",
+  "cwd": "D:\\projetos\\projeto-superbot",
+  "background": true
 }
 ```
 

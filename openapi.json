@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://presentations-rest-studios-tab.trycloudflare.com",
+      "url": "https://scheme-authentication-limited-prev.trycloudflare.com",
       "description": "Bridge server via Cloudflare Tunnel (URL atualizada automaticamente)"
     }
   ],
@@ -23,21 +23,46 @@
       "ErrorResponse": {
         "type": "object",
         "properties": {
-          "ok": { "type": "boolean", "example": false },
-          "error": { "type": "string" }
+          "ok": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string"
+          }
         }
       },
       "FileEntry": {
         "type": "object",
         "properties": {
-          "name": { "type": "string", "example": "package.json" },
-          "path": { "type": "string", "example": "D:\\jarbas_vida\\package.json" },
-          "type": { "type": "string", "enum": ["file", "directory"] },
-          "size": { "type": "integer", "example": 512 },
-          "modified": { "type": "string", "format": "date-time" },
+          "name": {
+            "type": "string",
+            "example": "package.json"
+          },
+          "path": {
+            "type": "string",
+            "example": "D:\\jarbas_vida\\package.json"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "file",
+              "directory"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "example": 512
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time"
+          },
           "children": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/FileEntry" },
+            "items": {
+              "$ref": "#/components/schemas/FileEntry"
+            },
             "description": "Subentradas (só aparece com recursive: true)"
           }
         }
@@ -45,7 +70,9 @@
     }
   },
   "security": [
-    { "bearerAuth": [] }
+    {
+      "bearerAuth": []
+    }
   ],
   "paths": {
     "/health": {
@@ -61,16 +88,39 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "service": { "type": "string", "example": "jarbas-remote-bridge" },
-                    "status": { "type": "string", "example": "running" },
-                    "uptime": { "type": "number", "example": 3600 },
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "jarbas-remote-bridge"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "running"
+                    },
+                    "uptime": {
+                      "type": "number",
+                      "example": 3600
+                    },
                     "allowedTools": {
                       "type": "array",
-                      "items": { "type": "string" },
-                      "example": ["codex", "claude", "powershell", "python", "node"]
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "codex",
+                        "claude",
+                        "powershell",
+                        "python",
+                        "node"
+                      ]
                     },
-                    "timeout": { "type": "integer", "example": 300000 }
+                    "timeout": {
+                      "type": "integer",
+                      "example": 300000
+                    }
                   }
                 }
               }
@@ -89,12 +139,21 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["tool", "command"],
+                "required": [
+                  "tool",
+                  "command"
+                ],
                 "properties": {
                   "tool": {
                     "type": "string",
                     "description": "Ferramenta a usar (deve estar na allowlist)",
-                    "enum": ["powershell", "codex", "claude", "python", "node"],
+                    "enum": [
+                      "powershell",
+                      "codex",
+                      "claude",
+                      "python",
+                      "node"
+                    ],
                     "example": "powershell"
                   },
                   "command": {
@@ -104,7 +163,9 @@
                   },
                   "args": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                      "type": "string"
+                    },
                     "description": "Argumentos adicionais (para tools que não são powershell)",
                     "example": []
                   },
@@ -112,6 +173,16 @@
                     "type": "integer",
                     "description": "Timeout em ms (padrão: 300000 = 5min)",
                     "example": 60000
+                  },
+                  "cwd": {
+                    "type": "string",
+                    "description": "Diretório de execução (opcional)",
+                    "example": "D:\\projetos\\projeto-superbot"
+                  },
+                  "background": {
+                    "type": "boolean",
+                    "description": "Se true, inicia o comando e retorna imediatamente (útil para abrir IDE/apps)",
+                    "default": false
                   }
                 }
               }
@@ -126,20 +197,52 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "stdout": { "type": "string", "description": "Saída padrão do comando" },
-                    "stderr": { "type": "string", "description": "Saída de erro do comando" },
-                    "exitCode": { "type": "integer", "example": 0 },
-                    "executionTime": { "type": "integer", "description": "Tempo de execução em ms", "example": 1234 }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "stdout": {
+                      "type": "string",
+                      "description": "Saída padrão do comando"
+                    },
+                    "stderr": {
+                      "type": "string",
+                      "description": "Saída de erro do comando"
+                    },
+                    "exitCode": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "executionTime": {
+                      "type": "integer",
+                      "description": "Tempo de execução em ms",
+                      "example": 1234
+                    },
+                    "background": {
+                      "type": "boolean",
+                      "description": "true quando executado em background"
+                    },
+                    "pid": {
+                      "type": "integer",
+                      "description": "PID do processo quando background=true"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "description": "Campos obrigatórios faltando (tool, command)" },
-          "401": { "description": "Token de autenticação inválido ou ausente" },
-          "403": { "description": "Ferramenta não está na allowlist" },
-          "500": { "description": "Comando falhou na execução" }
+          "400": {
+            "description": "Campos obrigatórios faltando (tool, command)"
+          },
+          "401": {
+            "description": "Token de autenticação inválido ou ausente"
+          },
+          "403": {
+            "description": "Ferramenta não está na allowlist"
+          },
+          "500": {
+            "description": "Comando falhou na execução"
+          }
         }
       }
     },
@@ -153,7 +256,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["tool", "command"],
+                "required": [
+                  "tool",
+                  "command"
+                ],
                 "properties": {
                   "tool": {
                     "type": "string",
@@ -167,13 +273,25 @@
                   },
                   "args": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "items": {
+                      "type": "string"
+                    },
                     "description": "Argumentos adicionais"
                   },
                   "timeout": {
                     "type": "integer",
                     "description": "Timeout em ms (padrão: 600000 = 10min)",
                     "example": 300000
+                  },
+                  "cwd": {
+                    "type": "string",
+                    "description": "Diretório de execução (opcional)",
+                    "example": "D:\\projetos\\projeto-superbot"
+                  },
+                  "background": {
+                    "type": "boolean",
+                    "description": "Se true, o job inicia o processo em background e finaliza rápido",
+                    "default": false
                   }
                 }
               }
@@ -188,18 +306,36 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "jobId": { "type": "string", "example": "job_1738850000000_1" },
-                    "status": { "type": "string", "example": "running" },
-                    "message": { "type": "string", "example": "Job started. Poll GET /jobs/job_1738850000000_1 for status." }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "jobId": {
+                      "type": "string",
+                      "example": "job_1738850000000_1"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "running"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Job started. Poll GET /jobs/job_1738850000000_1 for status."
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "description": "Campos obrigatórios faltando" },
-          "401": { "description": "Token inválido" },
-          "403": { "description": "Ferramenta não permitida" }
+          "400": {
+            "description": "Campos obrigatórios faltando"
+          },
+          "401": {
+            "description": "Token inválido"
+          },
+          "403": {
+            "description": "Ferramenta não permitida"
+          }
         }
       }
     },
@@ -212,7 +348,9 @@
             "name": "jobId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "ID do job retornado por POST /jobs/run",
             "example": "job_1738850000000_1"
           }
@@ -225,24 +363,75 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "id": { "type": "string" },
-                    "tool": { "type": "string" },
-                    "command": { "type": "string" },
-                    "status": { "type": "string", "enum": ["running", "completed", "failed"] },
-                    "stdout": { "type": "string", "description": "Saída do comando (vazio enquanto running)" },
-                    "stderr": { "type": "string" },
-                    "exitCode": { "type": "integer", "nullable": true },
-                    "error": { "type": "string", "description": "Mensagem de erro (só em failed)" },
-                    "elapsed": { "type": "integer", "description": "Tempo decorrido/total em ms" },
-                    "createdAt": { "type": "integer", "description": "Timestamp de criação" },
-                    "completedAt": { "type": "integer", "nullable": true, "description": "Timestamp de conclusão" }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "command": {
+                      "type": "string"
+                    },
+                    "cwd": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "background": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed"
+                      ]
+                    },
+                    "stdout": {
+                      "type": "string",
+                      "description": "Saída do comando (vazio enquanto running)"
+                    },
+                    "stderr": {
+                      "type": "string"
+                    },
+                    "exitCode": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "pid": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "PID quando executado em background"
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Mensagem de erro (só em failed)"
+                    },
+                    "elapsed": {
+                      "type": "integer",
+                      "description": "Tempo decorrido/total em ms"
+                    },
+                    "createdAt": {
+                      "type": "integer",
+                      "description": "Timestamp de criação"
+                    },
+                    "completedAt": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Timestamp de conclusão"
+                    }
                   }
                 }
               }
             }
           },
-          "404": { "description": "Job não encontrado (pode ter expirado após 1 hora)" }
+          "404": {
+            "description": "Job não encontrado (pode ter expirado após 1 hora)"
+          }
         }
       }
     },
@@ -258,22 +447,51 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
                     "jobs": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "id": { "type": "string" },
-                          "tool": { "type": "string" },
-                          "command": { "type": "string" },
-                          "status": { "type": "string", "enum": ["running", "completed", "failed"] },
-                          "createdAt": { "type": "integer" },
-                          "elapsed": { "type": "integer" }
+                          "id": {
+                            "type": "string"
+                          },
+                          "tool": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          },
+                          "cwd": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "background": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "running",
+                              "completed",
+                              "failed"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "integer"
+                          },
+                          "elapsed": {
+                            "type": "integer"
+                          }
                         }
                       }
                     },
-                    "count": { "type": "integer" }
+                    "count": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
@@ -292,7 +510,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["path"],
+                "required": [
+                  "path"
+                ],
                 "properties": {
                   "path": {
                     "type": "string",
@@ -318,18 +538,36 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "content": { "type": "string", "description": "Conteúdo do arquivo" },
-                    "size": { "type": "integer", "description": "Tamanho em bytes" },
-                    "path": { "type": "string", "description": "Caminho absoluto resolvido" }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Conteúdo do arquivo"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "description": "Tamanho em bytes"
+                    },
+                    "path": {
+                      "type": "string",
+                      "description": "Caminho absoluto resolvido"
+                    }
                   }
                 }
               }
             }
           },
-          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
-          "404": { "description": "Arquivo não encontrado" },
-          "413": { "description": "Arquivo maior que 5MB" }
+          "403": {
+            "description": "Path traversal detectado ou fora dos roots permitidos"
+          },
+          "404": {
+            "description": "Arquivo não encontrado"
+          },
+          "413": {
+            "description": "Arquivo maior que 5MB"
+          }
         }
       }
     },
@@ -343,7 +581,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["path", "content"],
+                "required": [
+                  "path",
+                  "content"
+                ],
                 "properties": {
                   "path": {
                     "type": "string",
@@ -373,17 +614,32 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "path": { "type": "string" },
-                    "size": { "type": "integer", "description": "Tamanho do conteúdo escrito" },
-                    "created": { "type": "boolean", "description": "true se arquivo foi criado, false se foi atualizado" }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "description": "Tamanho do conteúdo escrito"
+                    },
+                    "created": {
+                      "type": "boolean",
+                      "description": "true se arquivo foi criado, false se foi atualizado"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "description": "Campo content é obrigatório" },
-          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" }
+          "400": {
+            "description": "Campo content é obrigatório"
+          },
+          "403": {
+            "description": "Path traversal detectado ou fora dos roots permitidos"
+          }
         }
       }
     },
@@ -397,7 +653,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["path"],
+                "required": [
+                  "path"
+                ],
                 "properties": {
                   "path": {
                     "type": "string",
@@ -422,20 +680,34 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "path": { "type": "string" },
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "path": {
+                      "type": "string"
+                    },
                     "entries": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/FileEntry" }
+                      "items": {
+                        "$ref": "#/components/schemas/FileEntry"
+                      }
                     },
-                    "count": { "type": "integer", "description": "Número de entradas no nível raiz" }
+                    "count": {
+                      "type": "integer",
+                      "description": "Número de entradas no nível raiz"
+                    }
                   }
                 }
               }
             }
           },
-          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
-          "404": { "description": "Diretório não encontrado" }
+          "403": {
+            "description": "Path traversal detectado ou fora dos roots permitidos"
+          },
+          "404": {
+            "description": "Diretório não encontrado"
+          }
         }
       }
     },
@@ -449,7 +721,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["path"],
+                "required": [
+                  "path"
+                ],
                 "properties": {
                   "path": {
                     "type": "string",
@@ -474,17 +748,31 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "path": { "type": "string" },
-                    "deleted": { "type": "boolean", "example": true }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "deleted": {
+                      "type": "boolean",
+                      "example": true
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "description": "Tentou deletar diretório sem recursive: true" },
-          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
-          "404": { "description": "Arquivo/diretório não encontrado" }
+          "400": {
+            "description": "Tentou deletar diretório sem recursive: true"
+          },
+          "403": {
+            "description": "Path traversal detectado ou fora dos roots permitidos"
+          },
+          "404": {
+            "description": "Arquivo/diretório não encontrado"
+          }
         }
       }
     },
@@ -498,7 +786,9 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["path"],
+                "required": [
+                  "path"
+                ],
                 "properties": {
                   "path": {
                     "type": "string",
@@ -518,21 +808,46 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "path": { "type": "string" },
-                    "exists": { "type": "boolean" },
-                    "isFile": { "type": "boolean" },
-                    "isDirectory": { "type": "boolean" },
-                    "size": { "type": "integer", "description": "Tamanho em bytes" },
-                    "created": { "type": "string", "format": "date-time" },
-                    "modified": { "type": "string", "format": "date-time" },
-                    "accessed": { "type": "string", "format": "date-time" }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    },
+                    "isFile": {
+                      "type": "boolean"
+                    },
+                    "isDirectory": {
+                      "type": "boolean"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "description": "Tamanho em bytes"
+                    },
+                    "created": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "modified": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "accessed": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" }
+          "403": {
+            "description": "Path traversal detectado ou fora dos roots permitidos"
+          }
         }
       }
     },
@@ -546,7 +861,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["path", "search", "replace"],
+                "required": [
+                  "path",
+                  "search",
+                  "replace"
+                ],
                 "properties": {
                   "path": {
                     "type": "string",
@@ -581,17 +900,32 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": { "type": "boolean", "example": true },
-                    "path": { "type": "string" },
-                    "replacements": { "type": "integer", "description": "Número de substituições realizadas", "example": 1 }
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "replacements": {
+                      "type": "integer",
+                      "description": "Número de substituições realizadas",
+                      "example": 1
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "description": "Campos search e replace são obrigatórios" },
-          "403": { "description": "Path traversal detectado ou fora dos roots permitidos" },
-          "404": { "description": "Arquivo não encontrado" }
+          "400": {
+            "description": "Campos search e replace são obrigatórios"
+          },
+          "403": {
+            "description": "Path traversal detectado ou fora dos roots permitidos"
+          },
+          "404": {
+            "description": "Arquivo não encontrado"
+          }
         }
       }
     }

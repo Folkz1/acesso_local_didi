@@ -27,9 +27,11 @@ class RemoteExecutorClient {
    * @param {string} params.command - Comando a executar
    * @param {Array} params.args - Argumentos adicionais (opcional)
    * @param {number} params.timeout - Timeout customizado (opcional)
+   * @param {string} params.cwd - Diretório de execução (opcional)
+   * @param {boolean} params.background - Executa em background e retorna imediatamente
    * @returns {Promise<Object>}
    */
-  async execute({ tool, command, args = [], timeout }) {
+  async execute({ tool, command, args = [], timeout, cwd, background = false }) {
     const url = `${this.baseUrl}/run`;
     
     try {
@@ -43,7 +45,9 @@ class RemoteExecutorClient {
           tool,
           command,
           args,
-          timeout: timeout || this.timeout
+          timeout: timeout || this.timeout,
+          cwd,
+          background
         }),
         signal: AbortSignal.timeout(timeout || this.timeout)
       });
@@ -67,8 +71,22 @@ class RemoteExecutorClient {
   /**
    * Executa comando PowerShell
    */
-  async powershell(command, timeout) {
-    return this.execute({ tool: 'powershell', command, timeout });
+  async powershell(command, options = {}) {
+    const normalized = typeof options === 'number' ? { timeout: options } : options;
+    return this.execute({ tool: 'powershell', command, ...normalized });
+  }
+
+  /**
+   * Executa PowerShell em background (não bloqueia request)
+   */
+  async powershellBackground(command, cwd, timeout = 30000) {
+    return this.execute({
+      tool: 'powershell',
+      command,
+      cwd,
+      timeout,
+      background: true
+    });
   }
   
   /**
@@ -98,7 +116,7 @@ class RemoteExecutorClient {
    * Submete um job assíncrono (retorna jobId imediatamente)
    * Ideal para comandos demorados como codex, claude, etc.
    */
-  async submitJob({ tool, command, args = [], timeout }) {
+  async submitJob({ tool, command, args = [], timeout, cwd, background = false }) {
     const url = `${this.baseUrl}/jobs/run`;
 
     const response = await fetch(url, {
@@ -107,7 +125,7 @@ class RemoteExecutorClient {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.token}`
       },
-      body: JSON.stringify({ tool, command, args, timeout }),
+      body: JSON.stringify({ tool, command, args, timeout, cwd, background }),
       signal: AbortSignal.timeout(10000) // 10s para submeter
     });
 
@@ -154,8 +172,8 @@ class RemoteExecutorClient {
    * @param {number} pollInterval - Intervalo entre polls em ms (padrão: 3000)
    * @param {number} maxWait - Tempo máximo de espera em ms (padrão: 600000 = 10min)
    */
-  async executeAsync({ tool, command, args = [], timeout }, pollInterval = 3000, maxWait = 600000) {
-    const submission = await this.submitJob({ tool, command, args, timeout });
+  async executeAsync({ tool, command, args = [], timeout, cwd, background = false }, pollInterval = 3000, maxWait = 600000) {
+    const submission = await this.submitJob({ tool, command, args, timeout, cwd, background });
     const jobId = submission.jobId;
     const startTime = Date.now();
 

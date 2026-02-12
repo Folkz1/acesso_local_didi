@@ -135,6 +135,76 @@ async function testBridge() {
     console.error('❌ Teste falhou:', err.message);
   }
   
+  // Teste 5b: PowerShell com cwd (consistência para OpenClaw)
+  console.log('\n5b Teste: PowerShell com cwd');
+  try {
+    const cwdTarget = path.join(__dirname, 'logs');
+    const response = await fetch(`${BRIDGE_URL}/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BRIDGE_TOKEN}`
+      },
+      body: JSON.stringify({
+        tool: 'powershell',
+        command: '(Get-Location).Path',
+        cwd: cwdTarget
+      })
+    });
+
+    const data = await response.json();
+    if (data.ok && (data.stdout || '').toLowerCase().includes(cwdTarget.toLowerCase())) {
+      console.log('OK: cwd aplicado no PowerShell');
+    } else {
+      console.error('ERRO: cwd nao aplicado corretamente:', data);
+    }
+  } catch (err) {
+    console.error('ERRO: Teste de cwd falhou:', err.message);
+  }
+
+  // Teste 5c: PowerShell em background (não bloqueia para abrir apps/IDE)
+  console.log('\n5c Teste: PowerShell background');
+  try {
+    const markerPath = path.join(__dirname, 'logs', 'bg-marker.txt');
+    try { require('fs').unlinkSync(markerPath); } catch (_) {}
+
+    const response = await fetch(`${BRIDGE_URL}/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BRIDGE_TOKEN}`
+      },
+      body: JSON.stringify({
+        tool: 'powershell',
+        command: `Start-Sleep -Seconds 2; Set-Content -Path '${markerPath}' -Value 'BG_OK'`,
+        background: true,
+        timeout: 30000
+      })
+    });
+
+    const data = await response.json();
+    if (!data.ok || data.background !== true || !data.pid) {
+      console.error('ERRO: background não retornou pid/background:', data);
+    } else {
+      let created = false;
+      for (let i = 0; i < 7; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (require('fs').existsSync(markerPath)) {
+          created = true;
+          break;
+        }
+      }
+
+      if (created) {
+        console.log('OK: background executou sem bloquear e concluiu');
+      } else {
+        console.error('ERRO: comando background não concluiu');
+      }
+    }
+  } catch (err) {
+    console.error('ERRO: Teste de background falhou:', err.message);
+  }
+
   // ==================== TESTES DE JOBS ====================
 
   // Job 1: Criar job assincrono (powershell)

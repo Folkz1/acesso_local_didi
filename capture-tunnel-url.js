@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const URL_FILE = path.join(__dirname, 'tunnel-url.txt');
+const OPENAPI_FILE = path.join(__dirname, 'openapi.json');
 const MEMORY_URL = process.env.JARBAS_MEMORY_URL || '';
 const MEMORY_TOKEN = process.env.JARBAS_MEMORY_TOKEN || '';
 
@@ -41,6 +42,9 @@ process.stdin.on('data', (chunk) => {
       fs.writeFileSync(URL_FILE, tunnelUrl, 'utf8');
       console.log('URL salva em: ' + URL_FILE);
 
+      // Atualizar OpenAPI para o OpenClaw usar URL nova
+      updateOpenApiServerUrl(tunnelUrl);
+
       // Enviar via WhatsApp
       sendWhatsApp(tunnelUrl);
 
@@ -51,6 +55,24 @@ process.stdin.on('data', (chunk) => {
     }
   }
 });
+
+function updateOpenApiServerUrl(tunnelUrl) {
+  try {
+    if (!fs.existsSync(OPENAPI_FILE)) return;
+
+    const openapi = JSON.parse(fs.readFileSync(OPENAPI_FILE, 'utf8'));
+    if (!Array.isArray(openapi.servers) || openapi.servers.length === 0) {
+      openapi.servers = [{ url: tunnelUrl, description: 'Bridge server via Cloudflare Tunnel' }];
+    } else {
+      openapi.servers[0].url = tunnelUrl;
+    }
+
+    fs.writeFileSync(OPENAPI_FILE, JSON.stringify(openapi, null, 2), 'utf8');
+    console.log('OpenAPI atualizado em: ' + OPENAPI_FILE);
+  } catch (err) {
+    console.log('Aviso: falha ao atualizar openapi.json:', err.message);
+  }
+}
 
 async function sendWhatsApp(tunnelUrl) {
   const message = `🌐 *Jarbas Remote Bridge*\n\n` +
