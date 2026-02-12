@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://scheme-authentication-limited-prev.trycloudflare.com",
+      "url": "https://fda-tyler-whenever-qld.trycloudflare.com",
       "description": "Bridge server via Cloudflare Tunnel (URL atualizada automaticamente)"
     }
   ],
@@ -147,13 +147,6 @@
                   "tool": {
                     "type": "string",
                     "description": "Ferramenta a usar (deve estar na allowlist)",
-                    "enum": [
-                      "powershell",
-                      "codex",
-                      "claude",
-                      "python",
-                      "node"
-                    ],
                     "example": "powershell"
                   },
                   "command": {

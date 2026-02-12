@@ -15,6 +15,8 @@ timeout /t 3 /nobreak >nul
 
 :: Iniciar cloudflared tunnel e capturar URL
 echo Starting Cloudflare Tunnel...
-"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:8788 2>&1 | node capture-tunnel-url.js
+set LOG_FILE=%CD%\tunnel.log
+echo [%DATE% %TIME%] Starting Cloudflare Tunnel...>> "%LOG_FILE%"
+"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:8788 2>&1 | node capture-tunnel-url.js >> "%LOG_FILE%" 2>&1
 
 pause

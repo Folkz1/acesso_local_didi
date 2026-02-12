@@ -2,4 +2,5 @@ logs/
 node_modules/
 .env
 *.log
+tunnel-url.txt
 .DS_Store
